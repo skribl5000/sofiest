@@ -8,6 +8,8 @@ class EventCategory(models.Model):
     name = models.CharField(max_length=256, verbose_name='Категория события')
     description = models.TextField(max_length=4000, verbose_name='Описание события', null=True)
 
+    objects = models.Manager()
+
     def __str__(self):
         return self.name
 
@@ -17,6 +19,8 @@ class EventSubCategory(models.Model):
     system_name = models.CharField(max_length=128, null=True)
     name = models.CharField(max_length=256, verbose_name='Подкатегория события')
     category = models.ForeignKey(EventCategory, on_delete=models.CASCADE)
+
+    objects = models.Manager()
 
     def __str__(self):
         return f'{self.name}'
@@ -81,5 +85,22 @@ class BetVariant(models.Model):
     bet = models.ForeignKey(Bet, on_delete=models.CASCADE)
     variant = models.ForeignKey(Variant, on_delete=models.CASCADE)
     weight = models.FloatField(verbose_name='Вероятность исхода')
+
+    objects = models.Manager()
+
+
+class Comment(models.Model):
+    id = models.AutoField(primary_key=True)
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, default='', null=True)
+    text = models.TextField(max_length=4000, null=True, blank=False)
+    event = models.ForeignKey(Event, null=True, on_delete=models.CASCADE)
+
+    objects = models.Manager()
+
+
+class CommentLike(models.Model):
+    id = models.AutoField(primary_key=True)
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, default='', null=True)
+    comment = models.ForeignKey(Comment, on_delete=models.CASCADE)
 
     objects = models.Manager()

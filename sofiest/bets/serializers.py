@@ -1,6 +1,6 @@
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
-from .models import Bet, Variant, Event, BetVariant
+from .models import Bet, Variant, Event, BetVariant, EventSubCategory, EventCategory
 from django.utils.timezone import now
 
 class CreateUserSerializer(serializers.ModelSerializer):
@@ -26,6 +26,8 @@ class EventSerializer(serializers.ModelSerializer):
         pass
 
     active = serializers.SerializerMethodField()
+    date = serializers.DateTimeField(format="%Y-%m-%d %H:%M:%S")
+    active_due_date = serializers.DateTimeField(format="%Y-%m-%d %H:%M:%S")
 
     def get_active(self, obj):
         return (obj.active_due_date - now()).days > 0
@@ -50,9 +52,14 @@ class VariantSerializer(serializers.ModelSerializer):
 
 
 class BetVariantSerializer(serializers.ModelSerializer):
-    variant = VariantSerializer()
+    # variant = VariantSerializer()
 
     class Meta:
         model = BetVariant
         fields = '__all__'
+        depth = 1
 
+
+class EventCategorySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EventCategory

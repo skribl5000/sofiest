@@ -12,9 +12,13 @@ from rest_framework.authentication import TokenAuthentication, BasicAuthenticati
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from .models import Bet, Variant, Event, BetVariant
-from .serializers import BetSerializer, VariantSerializer, EventSerializer, BetVariantSerializer
+from .models import Bet, Variant, Event, BetVariant, EventCategory
+from .serializers import BetSerializer, VariantSerializer, EventSerializer, BetVariantSerializer, EventCategorySerializer
 from datetime import datetime
+from django.core.exceptions import ObjectDoesNotExist
+import json
+
+import time
 
 
 class CreateUserAPIView(CreateAPIView):
@@ -63,17 +67,24 @@ def example_view(request, format=None):
 @authentication_classes([TokenAuthentication, BasicAuthentication, SessionAuthentication])
 @permission_classes([IsAuthenticated])
 def get_events(request):
+    user = request.user
     today = datetime.today().strftime('%Y-%m-%d')
-
     events = list()
 
     for result in Event.objects.filter(active_due_date__gte=today).values():
+
+        try:
+            bet = Bet.objects.get(event__id=result['id'], bet_maker=user)
+        except ObjectDoesNotExist:
+            bet = None
+
         events.append({
             'event': result,
             'variants': VariantSerializer(
                 Variant.objects.filter(event__id=result['id']),
                 many=True
-            ).data
+            ).data,
+            'has_bet': bet is not None
         })
 
     return Response(events)
@@ -92,5 +103,84 @@ def get_bets(request):
                 many=True
             ).data
         })
-
     return Response(bets)
+
+
+@api_view(['GET'])
+@authentication_classes([TokenAuthentication, BasicAuthentication, SessionAuthentication])
+def get_bet(request):
+    user = request.user
+    params = request.query_params
+    if 'event_id' not in params:
+        return Response({'error': 'request must consist event_id parameter'}, status.HTTP_400_BAD_REQUEST)
+
+    event = Event.objects.get(pk=params['event_id'])
+    try:
+        bet = Bet.objects.get(event=event, bet_maker=user)
+    except ObjectDoesNotExist:
+        bet = None
+
+    result = {'event': EventSerializer(event).data}
+
+    if bet:
+        bet_variants = BetVariant.objects.filter(bet=bet)
+        variants = [
+            {
+                'id': b.variant.id,
+                'title': b.variant.title,
+                'description': b.variant.description,
+                'weight': b.weight,
+            } for b in bet_variants
+        ]
+
+        result['variants'] = variants
+        result['has_bet'] = True  # to serializer
+    else:
+        result['has_bet'] = False
+        result['variants'] = VariantSerializer(
+                Variant.objects.filter(event=event),
+                many=True
+            ).data
+
+    return Response(result)
+
+
+@api_view(['POST'])
+@authentication_classes([TokenAuthentication, BasicAuthentication, SessionAuthentication])
+@permission_classes([IsAuthenticated])
+def post_bet(request):
+    data = request.data
+    user = request.user
+    event_id = data['event']['id']
+    event = Event.objects.get(pk=event_id)
+    try:
+        bet = Bet.objects.get(event=event, bet_maker=user)
+    except ObjectDoesNotExist:
+        bet = None
+
+    is_new_bet = True
+    if bet:
+        is_new_bet = False
+        bet.delete()
+    new_bet = Bet(event=event, bet_maker=user)
+    new_bet.save()
+
+    for variant in data['variants']:
+        existing_variant = Variant.objects.get(pk=variant['id'])
+        new_bet_variant = BetVariant(
+            bet=new_bet,
+            variant=existing_variant,
+            weight=variant['weight']
+        )
+        new_bet_variant.save()
+    # create bet with bet_variants
+    return Response(
+        BetSerializer(new_bet).data, status.HTTP_201_CREATED if is_new_bet else status.HTTP_200_OK
+    )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_categories(request):
+    categories = EventCategory.objects.all().values()
+    return Response(categories)
